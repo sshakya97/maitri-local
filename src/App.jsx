@@ -597,9 +597,9 @@ function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
   }, [personGroups]);
 
   const kpis = useMemo(() => {
-    let total = 0, blocked = 0, inProgress = 0, readyForQA = 0;
+    let active = 0, blocked = 0, inProgress = 0, readyForQA = 0;
     for (const g of personGroups) {
-      total += g.total;
+      active += g.total;
       for (const seg of g.segments) {
         if (seg.status === "Blocked") blocked += seg.count;
         else if (seg.status === "In Progress" || seg.status === "In Dev" || seg.status === "In INT") inProgress += seg.count;
@@ -607,7 +607,7 @@ function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
       }
     }
     const idle = personGroups.filter(g => g.total === 0).length;
-    return { total, blocked, inProgress, readyForQA, idle };
+    return { active, blocked, inProgress, readyForQA, idle };
   }, [personGroups]);
 
   const toggleCollapse = (name) => setCollapsed(prev => {
