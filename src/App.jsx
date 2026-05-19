@@ -669,42 +669,70 @@ function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
 
       {/* Chart */}
       <div style={{ background: bg2, border: `1px solid ${bdr}`, borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: txt2, marginBottom: 14 }}>Workload by person</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* KPI strip */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: txt2, marginRight: 4 }}>Workload</div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: txt, padding: "3px 10px", borderRadius: 20, background: dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,60,0.05)" }}>{kpis.active} active</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: kpis.blocked > 0 ? (pickColors(STATUS_CONFIG["Blocked"], dark).color) : txt2, padding: "3px 10px", borderRadius: 20, background: kpis.blocked > 0 ? pickColors(STATUS_CONFIG["Blocked"], dark).bg : (dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,60,0.03)") }}>{kpis.blocked} blocked</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: txt, padding: "3px 10px", borderRadius: 20, background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,60,0.03)" }}>{kpis.inProgress} in progress</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: txt, padding: "3px 10px", borderRadius: 20, background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,60,0.03)" }}>{kpis.readyForQA} ready for QA</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: txt2, padding: "3px 10px", borderRadius: 20, background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,60,0.03)" }}>{kpis.idle} idle</span>
+        </div>
+
+        {/* Card grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
           {personGroups.map(g => {
-            const pct = (g.total / maxCount) * 100;
+            const isIdle = g.total === 0;
+            const loadPct = isIdle ? 0 : (g.total / maxCount) * 100;
             return (
-              <div key={g.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, width: 140, flexShrink: 0 }}>
-                  <Avatar name={g.name} size={26} />
-                  <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 4 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: txt, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{PEOPLE[g.name].short}</div>
-                    <RoleBadge role={PEOPLE[g.name].role} />
-                  </div>
+              <div key={g.name} style={{ background: dark ? "rgba(255,255,255,0.025)" : "rgba(0,0,60,0.02)", border: `1px solid ${bdr}`, borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* Card header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Avatar name={g.name} size={28} />
+                  <div style={{ fontSize: 13, fontWeight: 800, color: isIdle ? txt3 : txt }}>{PEOPLE[g.name].short}</div>
+                  <RoleBadge role={PEOPLE[g.name].role} />
                 </div>
-                <div style={{ flex: 1, height: 26, background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,60,0.04)", borderRadius: 6, overflow: "hidden", display: "flex", position: "relative" }}>
-                  {g.total === 0 ? (
-                    <div style={{ display: "flex", alignItems: "center", padding: "0 10px", fontSize: 11, color: txt3, fontStyle: "italic" }}>no active work</div>
-                  ) : (
-                    <div style={{ width: pct + "%", display: "flex", height: "100%" }}>
+
+                {isIdle ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 88, fontSize: 12, color: txt3, fontStyle: "italic", opacity: 0.55 }}>no active work</div>
+                ) : (
+                  <>
+                    {/* Total + mini load bar */}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <div style={{ fontSize: 32, fontWeight: 800, fontFamily: "monospace", color: txt, lineHeight: 1 }}>{g.total}</div>
+                      <div style={{ width: "100%", height: 3, background: dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,60,0.06)", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ width: loadPct + "%", height: "100%", background: "#4F8EF7", borderRadius: 2, transition: "width 0.2s" }} />
+                      </div>
+                    </div>
+
+                    {/* Status chips */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
                       {g.segments.map(seg => {
-                        const segPct = (seg.count / g.total) * 100;
+                        const cfg = pickColors(STATUS_CONFIG[seg.status] ?? { color: "#94A3B8", colorLight: "#475569", bg: "rgba(148,163,184,0.1)", ring: "#94A3B8" }, dark);
                         const isDimmed = highlightedStatus && highlightedStatus !== seg.status;
-                        const segColor = pickColors(STATUS_CONFIG[seg.status] ?? { color: "#94A3B8", colorLight: "#475569" }, dark).color;
                         return (
-                          <div key={seg.status} title={`${seg.status}: ${seg.count}`} onClick={() => handleSegmentClick(seg.status, g.name)} style={{ width: segPct + "%", background: segColor, opacity: isDimmed ? 0.25 : 1, cursor: "pointer", transition: "opacity 0.15s", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800, textShadow: "0 1px 1px rgba(0,0,0,0.3)" }}>
-                            {seg.count > 0 && segPct > 12 ? seg.count : ""}
-                          </div>
+                          <button
+                            key={seg.status}
+                            type="button"
+                            title={`${seg.status}: ${seg.count}`}
+                            onClick={() => handleSegmentClick(seg.status, g.name)}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", borderRadius: 6, background: cfg.bg, border: "1px solid transparent", cursor: "pointer", opacity: isDimmed ? 0.35 : 1, transition: "opacity 0.15s", fontFamily: "inherit", textAlign: "left", width: "100%" }}
+                          >
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+                            <span style={{ flex: 1, fontSize: 11.5, fontWeight: 700, color: cfg.color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{seg.status}</span>
+                            <span style={{ fontSize: 12, fontWeight: 800, fontFamily: "monospace", color: cfg.color }}>{seg.count}</span>
+                          </button>
                         );
                       })}
                     </div>
-                  )}
-                </div>
-                <div style={{ width: 36, textAlign: "right", fontSize: 14, fontWeight: 800, fontFamily: "monospace", color: g.total === 0 ? txt3 : txt }}>{g.total}</div>
+                  </>
+                )}
               </div>
             );
           })}
         </div>
+
+        {/* Legend */}
         {presentStatuses.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${bdr}`, alignItems: "center" }}>
             {presentStatuses.map(s => {
