@@ -1,5 +1,56 @@
 /# Maitri Dashboard — Changelog
 
+## [2026-05-19] Standup Chart Redesign — Card Grid
+
+### What Changed
+- **Stacked-bar chart replaced with per-person card grid** — the original horizontal stacked-bar `StandupChart` was hard to scan at a glance during DSM (counts had to be estimated from segment widths, idle people blended in with busy ones, status names lived only in a legend). Replaced with a responsive CSS-grid layout: `repeat(auto-fit, minmax(280px, 1fr))` → 3 cards per row on wide screens, 2 on tablets, 1 on narrow viewports.
+- **Each card surfaces the active work directly** — header row (avatar + short name + role badge), large monospace total, a 3px mini load bar scaled to the most-loaded person, and an explicit vertical list of colored status chips with exact counts. Status chips reuse `STATUS_CONFIG` colors via `pickColors`. Chips are sorted by `STANDUP_STATUS_ORDER` so Blocked is always at the top.
+- **Idle cards dim instead of disappearing** — team members with zero active tasks still get a card (so nobody is skipped in DSM), rendered with `opacity: 0.55` and a centered italic "no active work" label in place of the total/bar/chips.
+- **KPI strip above the grid** — five inline pills summarize the team's state: `{N} active`, `{N} blocked`, `{N} in progress`, `{N} ready for QA`, `{N} idle`. The blocked pill goes red-tinted when count > 0. `in progress` aggregates `In Progress`, `In Dev`, and `In INT` across projects.
+- **Interactions preserved** — clicking a status chip on any card still calls `handleSegmentClick(status, personName)`: highlights matching rows in the table below, dims non-matching chips/rows to 35% / 30% opacity, and scrolls to that person's section. Legend pills below the grid still toggle the highlight without scrolling. "Clear filter" button works as before.
+
+### Files Modified
+- `src/App.jsx` — Added `kpis` `useMemo` (aggregates `active`/`blocked`/`inProgress`/`readyForQA`/`idle` from `personGroups`). Replaced the `{/* Chart */}` block inside `StandupView` with the new KPI strip + responsive card grid; preserved the legend block. No changes to state (`highlightedStatus`, `personRefs`, `personGroups`, `maxCount`, `presentStatuses`) or handlers (`handleSegmentClick`, `handleLegendClick`). No new dependencies.
+- `docs/superpowers/specs/2026-05-04-standup-view-design.md` — Spec revised in-place: the original `StandupChart` description (six horizontal stacked-bar rows) was replaced with the new card-grid design; Edge cases and Testing sections updated to match.
+- `docs/superpowers/plans/2026-05-19-standup-chart-redesign.md` — New implementation plan for this work.
+- `docs/changelog.md` — This entry.
+
+---
+
+## [2026-05-05] Standup Fixes + SUPP Project + Light-theme Color Tuning
+
+### What Changed
+- **Sprint field now populates correctly** — issues' `sprintName` was always `null` because `mapIssue` was reading `f.sprint` (a Jira Server-era alias that doesn't exist in Jira Cloud's response). Added `findSprintArray()` helper that scans all customfields for an array of sprint-shaped objects (have `name` + `state`), making sprint detection tenant-agnostic. Switched `FIELDS` to `['*all']` so all customfields are returned for the scan to operate on. Without this fix the Standup tab's default "Active Sprints" filter dropped every issue.
+- **Standup excludes Deferred by default** — new `excludeDeferred(issue)` helper applied in the Standup filter chain alongside `isActive` and `excludeUAT`. Deferred tickets only appear in Board / Reports / Attention views.
+- **SUPP project added** — included in JQL (`project in (ACT, CONN, NACT, QA, SUPP)`), `PROJECT_KEYS`, `PROJECT_COLORS` (pink `#F472B6`), and the project filter buttons in the topbar and standup view.
+- **Darker, more vibrant colors on light theme** — added `colorLight` field to every entry in `STATUS_CONFIG`, `PROJECT_COLORS`, and `PRIORITY_COLOR` (using Tailwind 700–800 shades). New `pickColors(cfg, dark)` helper resolves color/bg/ring at the active theme: dark theme keeps the existing palette unchanged, light theme switches to the darker variant with a 12% alpha tint background. `StatusPill`, `PriBadge`, `ProjectBadge` now take a `dark` prop; standup chart segments, legend pills, board group headers, and `IssueCard` ring/border resolve theme-aware too.
+
+### Files Modified
+- `server/jira.js` — Replaced `'sprint'` field name with `*all` + `findSprintArray()` auto-detection; added SUPP to JQL and `PROJECT_KEYS`
+- `src/App.jsx` — Added `excludeDeferred` helper and applied to standup filter; added SUPP to `PROJECT_COLORS` and both project filter button arrays; added `colorLight` to STATUS_CONFIG / PROJECT_COLORS / PRIORITY_COLOR; added `pickColors` helper; threaded `dark` prop through badges and propagated to all 11 call sites; updated standup chart, legend, board group, and IssueCard to use theme-aware colors
+
+---
+
+## [2026-05-04] Standup Tab — Per-Person DSM View
+
+### What Changed
+- **New "Standup" tab** added to the topbar between QA Board and Reports — purpose-built for Daily Stand-up Meeting scanning
+- **Stacked horizontal bar chart** — one bar per Maitri member (in `PEOPLE` order), segmented by status. Bar widths normalized to the most-loaded person so workload disparity is visible at a glance
+- **Per-person sections** below the chart — collapsible, dense one-line rows showing Key, Status, Priority, Title, Deadline, Updated, SDET (when present)
+- **UAT exclusion** — new `excludeUAT(issue)` helper drops any status whose name contains "UAT" (case-insensitive). Catches `Ready for UAT`, `In UAT`, `Promoted to UAT` and any future UAT-named statuses without code changes
+- **Active Sprints aggregate** — new `"Active Sprints"` option in the sprint dropdown (added to all three dropdowns: dev/qa filter row, Reports view, Standup view) that includes any issue whose sprint is currently `state: active`. Useful when ACT/CONN/NACT/QA have different active sprints simultaneously
+- **Auto-default** — entering Standup tab for the first time auto-sets the sprint filter to "Active Sprints" (only when sprint filter is currently "all", so it doesn't override an explicit user choice)
+- **Chart→table interaction** — clicking a chart segment dims non-matching rows and scrolls to that person; clicking a legend pill dims non-matching rows; click again or click "Clear filter" to reset
+- **Empty-person handling** — team members with zero active tasks still render in the chart (with empty track + "no active work" label) and as a collapsed-style header in the table — so nobody is accidentally skipped during standup
+- Within-person sort order: status urgency (Blocked first), then priority (P0→P4), then most-recently-updated — most urgent task each person owns shows at the top of their section
+
+### Files Modified
+- `src/App.jsx` — Added `excludeUAT`, `filterBySprint`, and `STANDUP_STATUS_ORDER` helpers; new `StandupView` component; new `"standup"` tab; auto-default sprintFilter on standup entry; "Active Sprints" option added to all three sprint dropdowns; refactored existing sprint filtering to use shared `filterBySprint` helper
+- `docs/changelog.md` — This entry
+- `docs/superpowers/specs/2026-05-04-standup-view-design.md` — Design spec
+
+---
+
 ## [2026-04-02] QA Project + Collapsible Groups + Sprint Filter + Drag-and-Drop
 
 ### What Changed
