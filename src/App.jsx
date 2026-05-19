@@ -22,25 +22,29 @@ const PEOPLE = {
 };
 
 const STATUS_CONFIG = {
-  "In Progress":          { color: "#4F8EF7", bg: "rgba(79,142,247,0.12)",  ring: "#4F8EF7" },
-  "Blocked":              { color: "#F74F4F", bg: "rgba(247,79,79,0.12)",   ring: "#F74F4F" },
-  "Ready for QA":         { color: "#A78BFA", bg: "rgba(167,139,250,0.12)", ring: "#A78BFA" },
-  "Ready for Promotion":  { color: "#F7C94F", bg: "rgba(247,201,79,0.12)",  ring: "#F7C94F" },
-  "Ready for Development":{ color: "#7DD3FC", bg: "rgba(125,211,252,0.12)", ring: "#7DD3FC" },
-  "In Review":            { color: "#FB923C", bg: "rgba(251,146,60,0.12)",  ring: "#FB923C" },
-  "New":                  { color: "#94A3B8", bg: "rgba(148,163,184,0.12)", ring: "#94A3B8" },
-  "Promoted":             { color: "#34D399", bg: "rgba(52,211,153,0.1)",   ring: "#34D399" },
-  "Done":                 { color: "#64748B", bg: "rgba(100,116,139,0.1)",  ring: "#64748B" },
-  "Deferred":             { color: "#94A3B8", bg: "rgba(148,163,184,0.08)", ring: "#94A3B8" },
+  "In Progress":          { color: "#4F8EF7", colorLight: "#1D4ED8", bg: "rgba(79,142,247,0.12)",  ring: "#4F8EF7" },
+  "Blocked":              { color: "#F74F4F", colorLight: "#B91C1C", bg: "rgba(247,79,79,0.12)",   ring: "#F74F4F" },
+  "Ready for QA":         { color: "#A78BFA", colorLight: "#6D28D9", bg: "rgba(167,139,250,0.12)", ring: "#A78BFA" },
+  "Ready for Promotion":  { color: "#F7C94F", colorLight: "#B45309", bg: "rgba(247,201,79,0.12)",  ring: "#F7C94F" },
+  "Ready for Development":{ color: "#7DD3FC", colorLight: "#0369A1", bg: "rgba(125,211,252,0.12)", ring: "#7DD3FC" },
+  "In Review":            { color: "#FB923C", colorLight: "#C2410C", bg: "rgba(251,146,60,0.12)",  ring: "#FB923C" },
+  "New":                  { color: "#94A3B8", colorLight: "#475569", bg: "rgba(148,163,184,0.12)", ring: "#94A3B8" },
+  "Promoted":             { color: "#34D399", colorLight: "#047857", bg: "rgba(52,211,153,0.1)",   ring: "#34D399" },
+  "Done":                 { color: "#64748B", colorLight: "#334155", bg: "rgba(100,116,139,0.1)",  ring: "#64748B" },
+  "Deferred":             { color: "#94A3B8", colorLight: "#475569", bg: "rgba(148,163,184,0.08)", ring: "#94A3B8" },
   // NACT-specific statuses
-  "In INT":               { color: "#4F8EF7", bg: "rgba(79,142,247,0.12)",  ring: "#4F8EF7" },
-  "In Dev":               { color: "#38BDF8", bg: "rgba(56,189,248,0.12)",  ring: "#38BDF8" },
-  "Req Done":             { color: "#F7C94F", bg: "rgba(247,201,79,0.12)",  ring: "#F7C94F" },
+  "In INT":               { color: "#4F8EF7", colorLight: "#1D4ED8", bg: "rgba(79,142,247,0.12)",  ring: "#4F8EF7" },
+  "In Dev":               { color: "#38BDF8", colorLight: "#0369A1", bg: "rgba(56,189,248,0.12)",  ring: "#38BDF8" },
+  "Req Done":             { color: "#F7C94F", colorLight: "#B45309", bg: "rgba(247,201,79,0.12)",  ring: "#F7C94F" },
 };
 
 const PRIORITY_COLOR = {
-  P0: "#F74F4F", P1: "#F7A24F", P2: "#F7C94F",
-  P3: "#A78BFA", P4: "#94A3B8", Unprioritized: "#64748B",
+  P0: { color: "#F74F4F", colorLight: "#B91C1C" },
+  P1: { color: "#F7A24F", colorLight: "#C2410C" },
+  P2: { color: "#F7C94F", colorLight: "#A16207" },
+  P3: { color: "#A78BFA", colorLight: "#6D28D9" },
+  P4: { color: "#94A3B8", colorLight: "#475569" },
+  Unprioritized: { color: "#64748B", colorLight: "#334155" },
 };
 
 const ACTIVE_CATEGORIES = new Set(["indeterminate", "new"]);
@@ -48,11 +52,22 @@ const ACTIVE_CATEGORIES = new Set(["indeterminate", "new"]);
 const QA_ASSIGNEES = new Set(["Aarati Adhikari", "Diwas Dhital - Maitri"]);
 
 const PROJECT_COLORS = {
-  ACT:  { bg: "rgba(79,142,247,0.15)",  color: "#4F8EF7" },
-  CONN: { bg: "rgba(167,139,250,0.15)", color: "#A78BFA" },
-  NACT: { bg: "rgba(52,211,153,0.15)",  color: "#34D399" },
-  QA:   { bg: "rgba(251,146,60,0.15)",  color: "#FB923C" },
+  ACT:  { bg: "rgba(79,142,247,0.15)",  color: "#4F8EF7", colorLight: "#1D4ED8" },
+  CONN: { bg: "rgba(167,139,250,0.15)", color: "#A78BFA", colorLight: "#6D28D9" },
+  NACT: { bg: "rgba(52,211,153,0.15)",  color: "#34D399", colorLight: "#047857" },
+  QA:   { bg: "rgba(251,146,60,0.15)",  color: "#FB923C", colorLight: "#C2410C" },
+  SUPP: { bg: "rgba(244,114,182,0.15)", color: "#F472B6", colorLight: "#BE185D" },
 };
+
+// Resolve a color config to {color, bg, ring} for the active theme.
+// In light theme, derive bg/ring from `colorLight` so the chip is more vibrant on a white background.
+function pickColors(cfg, dark) {
+  if (dark || !cfg?.colorLight) {
+    return { color: cfg?.color, bg: cfg?.bg, ring: cfg?.ring ?? cfg?.color };
+  }
+  const c = cfg.colorLight;
+  return { color: c, bg: c + "1F", ring: c };
+}
 
 // ─── helpers ────────────────────────────────────────────────────
 function relTime(iso) {
@@ -94,6 +109,23 @@ function isActive(issue) {
   return ACTIVE_CATEGORIES.has(issue.statusCategory);
 }
 
+function excludeUAT(issue) {
+  return !issue.status?.toLowerCase().includes("uat");
+}
+
+function excludeDeferred(issue) {
+  return issue.status !== "Deferred";
+}
+
+function filterBySprint(list, sprintFilter, availableSprints) {
+  if (sprintFilter === "all") return list;
+  if (sprintFilter === "active") {
+    const activeNames = new Set(availableSprints.filter(s => s.state === "active").map(s => s.name));
+    return list.filter(i => i.sprintName && activeNames.has(i.sprintName));
+  }
+  return list.filter(i => i.sprintName === sprintFilter);
+}
+
 // ─── mini components ────────────────────────────────────────────
 function Avatar({ name, size = 28 }) {
   const p = PEOPLE[name];
@@ -113,8 +145,9 @@ function RoleBadge({ role }) {
   );
 }
 
-function StatusPill({ status }) {
-  const cfg = STATUS_CONFIG[status] ?? { color: "#94A3B8", bg: "rgba(148,163,184,0.1)", ring: "#94A3B8" };
+function StatusPill({ status, dark = true }) {
+  const raw = STATUS_CONFIG[status] ?? { color: "#94A3B8", colorLight: "#475569", bg: "rgba(148,163,184,0.1)", ring: "#94A3B8" };
+  const cfg = pickColors(raw, dark);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 700, letterSpacing: "0.03em", border: `1px solid ${cfg.ring}33`, whiteSpace: "nowrap" }}>
       <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
@@ -123,8 +156,9 @@ function StatusPill({ status }) {
   );
 }
 
-function PriBadge({ priority }) {
-  const color = PRIORITY_COLOR[priority] ?? "#94A3B8";
+function PriBadge({ priority, dark = true }) {
+  const raw = PRIORITY_COLOR[priority] ?? { color: "#94A3B8", colorLight: "#475569" };
+  const color = dark ? raw.color : raw.colorLight;
   return (
     <span style={{ padding: "2px 7px", borderRadius: 4, background: color + "18", color, fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", border: `1px solid ${color}30` }}>
       {priority}
@@ -150,15 +184,16 @@ function StaleBadge() {
   );
 }
 
-function ProjectBadge({ project }) {
-  const pc = PROJECT_COLORS[project] ?? PROJECT_COLORS.ACT;
+function ProjectBadge({ project, dark = true }) {
+  const raw = PROJECT_COLORS[project] ?? PROJECT_COLORS.ACT;
+  const pc = pickColors(raw, dark);
   return (
     <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: pc.bg, color: pc.color, fontWeight: 700 }}>{project}</span>
   );
 }
 
 function IssueCard({ issue, expanded, onToggle, dark }) {
-  const cfg = STATUS_CONFIG[issue.status] ?? STATUS_CONFIG["New"];
+  const cfg = pickColors(STATUS_CONFIG[issue.status] ?? STATUS_CONFIG["New"], dark);
   const stale = isActive(issue) && isStale(issue);
   return (
     <div onClick={onToggle} style={{ background: expanded ? (dark ? "rgba(255,255,255,0.06)" : "#F0F4FF") : (dark ? "rgba(255,255,255,0.025)" : "#FAFBFF"), border: `1px solid ${isActive(issue) ? cfg.ring + "50" : (dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,60,0.07)")}`, borderLeft: `3px solid ${cfg.ring}`, borderRadius: 10, padding: "12px 14px", cursor: "pointer", transition: "all 0.15s", marginBottom: 6 }}>
@@ -167,9 +202,9 @@ function IssueCard({ issue, expanded, onToggle, dark }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 5 }}>
             <a href={JIRA_BASE + issue.key} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 11, fontWeight: 700, color: "#4F8EF7", fontFamily: "monospace", textDecoration: "none" }}>{issue.key}</a>
-            <ProjectBadge project={issue.project} />
-            <StatusPill status={issue.status} />
-            <PriBadge priority={issue.priority} />
+            <ProjectBadge project={issue.project} dark={dark} />
+            <StatusPill status={issue.status} dark={dark} />
+            <PriBadge priority={issue.priority} dark={dark} />
             <DeadlineBadge issue={issue} />
             {stale && <StaleBadge />}
           </div>
@@ -286,9 +321,7 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
   const activeIssues = useMemo(() => {
     const now = new Date();
     let list = issues.filter(i => ACTIVE_CATEGORIES.has(i.statusCategory));
-    if (sprintFilter !== "all") {
-      list = list.filter(i => i.sprintName === sprintFilter);
-    }
+    list = filterBySprint(list, sprintFilter, availableSprints);
     // Date filter — match if either duedate or targetEndDate satisfies
     if (dateFilter === "overdue") {
       list = list.filter(i => { const dates = [i.duedate, i.targetEndDate].filter(Boolean); return dates.some(d => new Date(d) < now); });
@@ -377,6 +410,7 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
             style={{ padding: "6px 10px", borderRadius: 7, border: `1px solid ${sprintFilter !== "all" ? "#4F8EF7" : bdr}`, background: sprintFilter !== "all" ? "#4F8EF7" : (dark ? "#181D2C" : "#fff"), color: sprintFilter !== "all" ? "#fff" : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", appearance: "auto", minWidth: 140 }}
           >
             <option value="all">All Sprints</option>
+            <option value="active">Active Sprints</option>
             {["active","future","closed"].map(state => {
               const group = availableSprints.filter(s => s.state === state);
               return group.length > 0 ? (
@@ -433,14 +467,14 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
                     onMouseEnter={e => e.currentTarget.style.background = dark ? "rgba(255,255,255,0.03)" : "#F8FAFF"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <td style={{ padding: "8px 12px", fontSize: 12, color: txt2, fontFamily: "monospace", textAlign: "center" }}>{idx + 1}</td>
-                    <td style={{ padding: "8px 12px" }}><ProjectBadge project={issue.project} /></td>
+                    <td style={{ padding: "8px 12px" }}><ProjectBadge project={issue.project} dark={dark} /></td>
                     <td style={{ padding: "8px 12px" }}>
                       <a href={JIRA_BASE + issue.key} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: "#4F8EF7", fontFamily: "monospace", textDecoration: "none" }}>{issue.key}</a>
                     </td>
                     <td style={{ padding: "8px 12px", maxWidth: 300 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 500, color: txt, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{issue.summary}</div>
                     </td>
-                    <td style={{ padding: "8px 12px" }}><StatusPill status={issue.status} /></td>
+                    <td style={{ padding: "8px 12px" }}><StatusPill status={issue.status} dark={dark} /></td>
                     <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "monospace", color: isPast ? "#F74F4F" : txt2, fontWeight: isPast ? 700 : 400, whiteSpace: "nowrap" }}>
                       {targetDate ? new Date(targetDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
                     </td>
@@ -471,6 +505,266 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── standup view ───────────────────────────────────────────────
+const STANDUP_STATUS_ORDER = ["Blocked","In Progress","In Dev","In INT","In Review","Ready for QA","Ready for Promotion","Req Done","Ready for Development","New"];
+
+function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSprints, dateFilter, setDateFilter, availableDueDates, proj, setProj }) {
+  const bg2 = dark ? "#111520" : "#FFFFFF";
+  const bdr = dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,60,0.07)";
+  const txt = dark ? "#E2E8F0" : "#0F172A";
+  const txt2 = dark ? "#64748B" : "#4A5280";
+  const txt3 = dark ? "#334155" : "#94A3B8";
+
+  const [highlightedStatus, setHighlightedStatus] = useState(null);
+  const [collapsed, setCollapsed] = useState(new Set());
+  const personRefs = useRef({});
+
+  const standupIssues = useMemo(() => {
+    let list = issues.filter(i => isActive(i) && excludeUAT(i) && excludeDeferred(i));
+    if (proj !== "All") list = list.filter(i => i.project === proj);
+    list = filterBySprint(list, sprintFilter, availableSprints);
+
+    const now = new Date();
+    if (dateFilter === "overdue") {
+      list = list.filter(i => { const dates = [i.duedate, i.targetEndDate].filter(Boolean); return dates.some(d => new Date(d) < now); });
+    } else if (dateFilter === "this_week") {
+      const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
+      list = list.filter(i => { const dates = [i.duedate, i.targetEndDate].filter(Boolean); return dates.some(d => new Date(d) >= now && new Date(d) <= weekEnd); });
+    } else if (dateFilter === "next_week") {
+      const thisWeekEnd = new Date(now); thisWeekEnd.setDate(thisWeekEnd.getDate() + (7 - thisWeekEnd.getDay()));
+      const nextWeekEnd = new Date(thisWeekEnd); nextWeekEnd.setDate(nextWeekEnd.getDate() + 7);
+      list = list.filter(i => { const dates = [i.duedate, i.targetEndDate].filter(Boolean); return dates.some(d => new Date(d) > thisWeekEnd && new Date(d) <= nextWeekEnd); });
+    } else if (dateFilter === "no_date") {
+      list = list.filter(i => !i.duedate && !i.targetEndDate);
+    } else if (dateFilter !== "all") {
+      list = list.filter(i => { const dates = [i.duedate, i.targetEndDate].filter(Boolean); return dates.some(d => d.slice(0, 10) === dateFilter); });
+    }
+    return list;
+  }, [issues, sprintFilter, availableSprints, dateFilter, proj]);
+
+  const personGroups = useMemo(() => {
+    const priorityOrder = ["P0","P1","P2","P3","P4","Unprioritized"];
+    return Object.keys(PEOPLE).map(name => {
+      const tasks = standupIssues.filter(i => i.assignee === name);
+      tasks.sort((a, b) => {
+        const sa = STANDUP_STATUS_ORDER.indexOf(a.status);
+        const sb = STANDUP_STATUS_ORDER.indexOf(b.status);
+        const sax = sa === -1 ? 99 : sa;
+        const sbx = sb === -1 ? 99 : sb;
+        if (sax !== sbx) return sax - sbx;
+        const pa = priorityOrder.indexOf(a.priority);
+        const pb = priorityOrder.indexOf(b.priority);
+        if (pa !== pb) return pa - pb;
+        return new Date(b.updated) - new Date(a.updated);
+      });
+      const byStatus = {};
+      for (const t of tasks) {
+        if (!byStatus[t.status]) byStatus[t.status] = 0;
+        byStatus[t.status]++;
+      }
+      const segments = [];
+      for (const s of STANDUP_STATUS_ORDER) {
+        if (byStatus[s]) segments.push({ status: s, count: byStatus[s] });
+      }
+      for (const s of Object.keys(byStatus)) {
+        if (!STANDUP_STATUS_ORDER.includes(s)) segments.push({ status: s, count: byStatus[s] });
+      }
+      return { name, tasks, segments, total: tasks.length };
+    });
+  }, [standupIssues]);
+
+  const maxCount = Math.max(1, ...personGroups.map(g => g.total));
+
+  const presentStatuses = useMemo(() => {
+    const seen = new Set();
+    const ordered = [];
+    for (const s of STANDUP_STATUS_ORDER) {
+      if (personGroups.some(g => g.segments.find(seg => seg.status === s))) {
+        seen.add(s); ordered.push(s);
+      }
+    }
+    for (const g of personGroups) {
+      for (const seg of g.segments) {
+        if (!seen.has(seg.status)) { seen.add(seg.status); ordered.push(seg.status); }
+      }
+    }
+    return ordered;
+  }, [personGroups]);
+
+  const kpis = useMemo(() => {
+    let total = 0, blocked = 0, inProgress = 0, readyForQA = 0;
+    for (const g of personGroups) {
+      total += g.total;
+      for (const seg of g.segments) {
+        if (seg.status === "Blocked") blocked += seg.count;
+        else if (seg.status === "In Progress" || seg.status === "In Dev" || seg.status === "In INT") inProgress += seg.count;
+        else if (seg.status === "Ready for QA") readyForQA += seg.count;
+      }
+    }
+    const idle = personGroups.filter(g => g.total === 0).length;
+    return { total, blocked, inProgress, readyForQA, idle };
+  }, [personGroups]);
+
+  const toggleCollapse = (name) => setCollapsed(prev => {
+    const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n;
+  });
+
+  const handleSegmentClick = (status, personName) => {
+    if (highlightedStatus === status) {
+      setHighlightedStatus(null);
+    } else {
+      setHighlightedStatus(status);
+      const ref = personRefs.current[personName];
+      if (ref) ref.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const handleLegendClick = (status) => {
+    setHighlightedStatus(prev => prev === status ? null : status);
+  };
+
+  const todayStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const peopleWithWork = personGroups.filter(g => g.total > 0).length;
+
+  return (
+    <div>
+      {/* Header + filters */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: txt }}>Daily Stand-up · {todayStr}</div>
+          <div style={{ fontSize: 12, color: txt2, marginTop: 2 }}>{standupIssues.length} active tasks · {peopleWithWork}/{personGroups.length} people with work</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, color: txt2, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Project</span>
+          {["All","ACT","CONN","NACT","QA","SUPP"].map(p => (
+            <button key={p} onClick={() => setProj(p)} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${proj === p ? "#4F8EF7" : bdr}`, background: proj === p ? "#4F8EF7" : "transparent", color: proj === p ? "#fff" : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>{p}</button>
+          ))}
+          <select value={sprintFilter} onChange={e => setSprintFilter(e.target.value)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${sprintFilter !== "all" ? "#4F8EF7" : bdr}`, background: sprintFilter !== "all" ? "#4F8EF7" : (dark ? "#181D2C" : "#fff"), color: sprintFilter !== "all" ? "#fff" : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", appearance: "auto", minWidth: 160 }}>
+            <option value="all">All Sprints</option>
+            <option value="active">Active Sprints</option>
+            {["active","future","closed"].map(state => {
+              const group = availableSprints.filter(s => s.state === state);
+              return group.length > 0 ? (
+                <optgroup key={state} label={state === "active" ? "Active" : state === "future" ? "Future" : "Recent Closed"}>
+                  {group.map(s => <option key={s.id || s.name} value={s.name}>{s.name} [{s.project}]</option>)}
+                </optgroup>
+              ) : null;
+            })}
+          </select>
+          <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${dateFilter !== "all" ? "#4F8EF7" : bdr}`, background: dateFilter !== "all" ? "#4F8EF7" : (dark ? "#181D2C" : "#fff"), color: dateFilter !== "all" ? "#fff" : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", appearance: "auto", minWidth: 130 }}>
+            <option value="all">All Dates</option>
+            <option value="overdue">Overdue</option>
+            <option value="this_week">Due This Week</option>
+            <option value="next_week">Due Next Week</option>
+            <option value="no_date">No Date Set</option>
+            {availableDueDates.map(d => <option key={d.date} value={d.date}>{d.date} ({d.count})</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div style={{ background: bg2, border: `1px solid ${bdr}`, borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: txt2, marginBottom: 14 }}>Workload by person</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {personGroups.map(g => {
+            const pct = (g.total / maxCount) * 100;
+            return (
+              <div key={g.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, width: 140, flexShrink: 0 }}>
+                  <Avatar name={g.name} size={26} />
+                  <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: txt, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{PEOPLE[g.name].short}</div>
+                    <RoleBadge role={PEOPLE[g.name].role} />
+                  </div>
+                </div>
+                <div style={{ flex: 1, height: 26, background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,60,0.04)", borderRadius: 6, overflow: "hidden", display: "flex", position: "relative" }}>
+                  {g.total === 0 ? (
+                    <div style={{ display: "flex", alignItems: "center", padding: "0 10px", fontSize: 11, color: txt3, fontStyle: "italic" }}>no active work</div>
+                  ) : (
+                    <div style={{ width: pct + "%", display: "flex", height: "100%" }}>
+                      {g.segments.map(seg => {
+                        const segPct = (seg.count / g.total) * 100;
+                        const isDimmed = highlightedStatus && highlightedStatus !== seg.status;
+                        const segColor = pickColors(STATUS_CONFIG[seg.status] ?? { color: "#94A3B8", colorLight: "#475569" }, dark).color;
+                        return (
+                          <div key={seg.status} title={`${seg.status}: ${seg.count}`} onClick={() => handleSegmentClick(seg.status, g.name)} style={{ width: segPct + "%", background: segColor, opacity: isDimmed ? 0.25 : 1, cursor: "pointer", transition: "opacity 0.15s", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800, textShadow: "0 1px 1px rgba(0,0,0,0.3)" }}>
+                            {seg.count > 0 && segPct > 12 ? seg.count : ""}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div style={{ width: 36, textAlign: "right", fontSize: 14, fontWeight: 800, fontFamily: "monospace", color: g.total === 0 ? txt3 : txt }}>{g.total}</div>
+              </div>
+            );
+          })}
+        </div>
+        {presentStatuses.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${bdr}`, alignItems: "center" }}>
+            {presentStatuses.map(s => {
+              const cfg = pickColors(STATUS_CONFIG[s] ?? { color: "#94A3B8", colorLight: "#475569", bg: "rgba(148,163,184,0.1)", ring: "#94A3B8" }, dark);
+              const isSelected = highlightedStatus === s;
+              const isDimmed = highlightedStatus && !isSelected;
+              return (
+                <button key={s} onClick={() => handleLegendClick(s)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 700, letterSpacing: "0.03em", border: `1px solid ${isSelected ? cfg.color : cfg.ring + "33"}`, cursor: "pointer", opacity: isDimmed ? 0.4 : 1, transition: "all 0.15s", fontFamily: "inherit" }}>
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color }} />
+                  {s}
+                </button>
+              );
+            })}
+            {highlightedStatus && (
+              <button onClick={() => setHighlightedStatus(null)} style={{ padding: "3px 9px", borderRadius: 20, background: "transparent", color: txt2, fontSize: 11, fontWeight: 700, border: `1px solid ${bdr}`, cursor: "pointer", fontFamily: "inherit" }}>Clear filter</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Per-person sections */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {personGroups.map(g => {
+          const isOpen = g.total > 0 && !collapsed.has(g.name);
+          return (
+            <div key={g.name} ref={el => { personRefs.current[g.name] = el; }} style={{ background: bg2, border: `1px solid ${bdr}`, borderRadius: 12, overflow: "hidden", scrollMarginTop: 80 }}>
+              <div onClick={() => g.total > 0 && toggleCollapse(g.name)} style={{ padding: "10px 14px", borderBottom: isOpen ? `1px solid ${bdr}` : "none", display: "flex", alignItems: "center", gap: 10, cursor: g.total > 0 ? "pointer" : "default", userSelect: "none", background: g.total === 0 ? (dark ? "rgba(255,255,255,0.02)" : "rgba(0,0,60,0.02)") : "transparent" }}>
+                <Avatar name={g.name} size={28} />
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: g.total === 0 ? txt3 : txt }}>{PEOPLE[g.name].short}</div>
+                  <RoleBadge role={PEOPLE[g.name].role} />
+                </div>
+                <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, color: g.total === 0 ? txt3 : txt2, padding: "2px 8px", borderRadius: 10, border: `1px solid ${bdr}` }}>{g.total} active</span>
+                {g.total > 0 && <span style={{ fontSize: 10, color: txt2 }}>{collapsed.has(g.name) ? "▸" : "▾"}</span>}
+                {g.total === 0 && <span style={{ fontSize: 11, color: txt3, fontStyle: "italic" }}>No active work</span>}
+              </div>
+              {isOpen && (
+                <div>
+                  {g.tasks.map(t => {
+                    const isDimmed = highlightedStatus && t.status !== highlightedStatus;
+                    return (
+                      <div key={t.key} onClick={() => window.open(JIRA_BASE + t.key, "_blank")} title={t.summary} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderBottom: `1px solid ${bdr}`, cursor: "pointer", opacity: isDimmed ? 0.3 : 1, transition: "opacity 0.15s" }}
+                        onMouseEnter={e => { if (!isDimmed) e.currentTarget.style.background = dark ? "rgba(255,255,255,0.03)" : "#F8FAFF"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                        <a href={JIRA_BASE + t.key} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 11.5, fontWeight: 700, color: "#4F8EF7", fontFamily: "monospace", textDecoration: "none", flexShrink: 0, minWidth: 70 }}>{t.key}</a>
+                        <ProjectBadge project={t.project} dark={dark} />
+                        <StatusPill status={t.status} dark={dark} />
+                        <PriBadge priority={t.priority} dark={dark} />
+                        <div style={{ flex: 1, fontSize: 12.5, color: txt, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 100 }}>{t.summary}</div>
+                        <DeadlineBadge issue={t} />
+                        <span style={{ fontSize: 10.5, color: txt3, fontFamily: "monospace", whiteSpace: "nowrap" }}>{relTime(t.updated)}</span>
+                        {t.sdetAssignee && <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(192,132,252,0.15)", color: "#C084FC", fontWeight: 700, whiteSpace: "nowrap" }}>SDET: {PEOPLE[t.sdetAssignee]?.short ?? t.sdetAssignee}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -614,6 +908,12 @@ export default function App() {
     localStorage.setItem("maitri-card-order", JSON.stringify(cardOrder));
   }, [cardOrder]);
 
+  // Default Standup tab to Active Sprints (only if user hasn't already picked something specific)
+  useEffect(() => {
+    if (tab === "standup" && sprintFilter === "all") setSprintFilter("active");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   const bg   = dark ? "#0B0D14" : "#F1F4FB";
   const bg2  = dark ? "#111520" : "#FFFFFF";
   const bg3  = dark ? "#181D2C" : "#EBEef8";
@@ -697,9 +997,7 @@ export default function App() {
     else if (statusFilter !== "All") list = list.filter(i => i.status === statusFilter);
 
     // Sprint filter
-    if (sprintFilter !== "all") {
-      list = list.filter(i => i.sprintName === sprintFilter);
-    }
+    list = filterBySprint(list, sprintFilter, availableSprints);
 
     // Date filter (due date / target date) — match if either field satisfies
     if (dateFilter === "overdue") {
@@ -848,11 +1146,11 @@ export default function App() {
             {loading ? "Loading..." : "↻ Refresh"}
           </button>
           <div style={{ display: "flex", gap: 1, background: bg3, borderRadius: 8, padding: 2, border: `1px solid ${bdr}` }}>
-            {[["dev","Dev Board"],["qa","QA Board"],["reports","Reports"],["attention",`Attention${attentionItems.total > 0 ? ` (${attentionItems.total})` : ""}`]].map(([t, l]) => (
+            {[["dev","Dev Board"],["qa","QA Board"],["standup","Standup"],["reports","Reports"],["attention",`Attention${attentionItems.total > 0 ? ` (${attentionItems.total})` : ""}`]].map(([t, l]) => (
               <button key={t} onClick={() => setTab(t)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: tab === t ? (t === "attention" && attentionItems.total > 0 ? "#F74F4F" : bg2) : "transparent", color: tab === t ? (t === "attention" && attentionItems.total > 0 ? "#fff" : txt) : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", transition: "all 0.15s" }}>{l}</button>
             ))}
           </div>
-          {tab !== "attention" && tab !== "reports" && (
+          {tab !== "attention" && tab !== "reports" && tab !== "standup" && (
             <div style={{ display: "flex", gap: 1, background: bg3, borderRadius: 8, padding: 2, border: `1px solid ${bdr}` }}>
               {[["board","⊞ Board"],["table","☰ Table"]].map(([v, l]) => (
                 <button key={v} onClick={() => setView(v)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: view === v ? bg2 : "transparent", color: view === v ? txt : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", transition: "all 0.15s" }}>{l}</button>
@@ -878,7 +1176,7 @@ export default function App() {
         )}
 
         {/* STAT CARDS */}
-        {tab !== "attention" && tab !== "reports" && (
+        {tab !== "attention" && tab !== "reports" && tab !== "standup" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 12, marginBottom: 22 }}>
           {(tab === "qa" ? [
             { label: "QA Active",     val: stats.qaAssigned,  color: "#C084FC", sub: "assigned to QA" },
@@ -957,8 +1255,13 @@ export default function App() {
           <ReportsView issues={issues} dark={dark} sprintFilter={sprintFilter} setSprintFilter={setSprintFilter} availableSprints={availableSprints} dateFilter={dateFilter} setDateFilter={setDateFilter} availableDueDates={availableDueDates} />
         )}
 
+        {/* STANDUP TAB */}
+        {tab === "standup" && (
+          <StandupView issues={issues} dark={dark} sprintFilter={sprintFilter} setSprintFilter={setSprintFilter} availableSprints={availableSprints} dateFilter={dateFilter} setDateFilter={setDateFilter} availableDueDates={availableDueDates} proj={proj} setProj={setProj} />
+        )}
+
         {/* PEOPLE CARDS (dev/qa tabs only) */}
-        {tab !== "attention" && tab !== "reports" && (
+        {tab !== "attention" && tab !== "reports" && tab !== "standup" && (
         <>
         <div style={{ display: "grid", gridTemplateColumns: tab === "qa" ? "repeat(2,1fr)" : "repeat(6,1fr)", gap: 10, marginBottom: 22 }}>
           {Object.entries(PEOPLE).filter(([, cfg]) => tab === "qa" ? cfg.role === "QA" : true).map(([name, cfg]) => (
@@ -978,7 +1281,7 @@ export default function App() {
         {/* FILTERS */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, color: txt2, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Project</span>
-          {["All","ACT","CONN","NACT","QA"].map(p => <Btn key={p} active={proj === p} onClick={() => setProj(p)}>{p}</Btn>)}
+          {["All","ACT","CONN","NACT","QA","SUPP"].map(p => <Btn key={p} active={proj === p} onClick={() => setProj(p)}>{p}</Btn>)}
           <div style={{ width: 1, height: 18, background: bdr }} />
           <span style={{ fontSize: 10, color: txt2, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Status</span>
           <select
@@ -998,6 +1301,7 @@ export default function App() {
             style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${sprintFilter !== "all" ? "#4F8EF7" : bdr}`, background: sprintFilter !== "all" ? "#4F8EF7" : (dark ? "#181D2C" : "#fff"), color: sprintFilter !== "all" ? "#fff" : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", appearance: "auto", minWidth: 140 }}
           >
             <option value="all">All Sprints</option>
+            <option value="active">Active Sprints</option>
             {["active","future","closed"].map(state => {
               const group = availableSprints.filter(s => s.state === state);
               return group.length > 0 ? (
@@ -1036,7 +1340,7 @@ export default function App() {
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16, marginBottom: 20 }}>
               {boardGroups.map(group => {
-                const cfg = STATUS_CONFIG[group.status] ?? STATUS_CONFIG["New"];
+                const cfg = pickColors(STATUS_CONFIG[group.status] ?? STATUS_CONFIG["New"], dark);
                 const isCollapsed = collapsedGroups.has(group.status);
                 const hasManualOrder = cardOrder[group.status]?.length > 0;
                 return (
@@ -1120,9 +1424,9 @@ export default function App() {
                           </div>
                         ) : <span style={{ fontSize: 11, color: txt3, fontStyle: "italic" }}>—</span>}
                       </td>
-                      <td style={{ padding: "10px 14px" }}><StatusPill status={issue.status} /></td>
-                      <td style={{ padding: "10px 14px" }}><PriBadge priority={issue.priority} /></td>
-                      <td style={{ padding: "10px 14px" }}><ProjectBadge project={issue.project} /></td>
+                      <td style={{ padding: "10px 14px" }}><StatusPill status={issue.status} dark={dark} /></td>
+                      <td style={{ padding: "10px 14px" }}><PriBadge priority={issue.priority} dark={dark} /></td>
+                      <td style={{ padding: "10px 14px" }}><ProjectBadge project={issue.project} dark={dark} /></td>
                       <td style={{ padding: "10px 14px" }}><DeadlineBadge issue={issue} /></td>
                       <td style={{ padding: "10px 14px", fontSize: 11, color: txt2, fontFamily: "monospace", whiteSpace: "nowrap" }}>{relTime(issue.updated)}</td>
                       <td style={{ padding: "10px 14px", maxWidth: 220 }}>
