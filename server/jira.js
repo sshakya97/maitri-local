@@ -16,15 +16,9 @@ const QA_ACCOUNT_IDS = [
   '712020:2d6a1371-6b2e-459c-a31b-61caff5a7f7d', // Diwas
 ];
 
-const FIELDS = [
-  'summary', 'status', 'assignee', 'priority', 'issuetype',
-  'updated', 'duedate', 'comment', 'sprint', 'project',
-  'customfield_10015', // target end date
-  'customfield_10058', // SDET Assignee
-  'story_points',
-  'timeoriginalestimate',
-  'timespent',
-];
+// Sprint lives in a customfield whose ID varies per Jira tenant. Request *all
+// so we can auto-detect it in mapIssue regardless of which ID this tenant uses.
+const FIELDS = ['*all'];
 
 // --- Cache ---
 const caches = {};
@@ -69,7 +63,7 @@ async function jiraPost(path, body, auth) {
 function buildJQL() {
   const allIds = TEAM_ACCOUNT_IDS.map(id => `"${id}"`).join(', ');
   const qaIds = QA_ACCOUNT_IDS.map(id => `"${id}"`).join(', ');
-  return `project in (ACT, CONN, NACT, QA) AND (assignee in (${allIds}) OR "SDET Assignee" in (${qaIds})) ORDER BY updated DESC`;
+  return `project in (ACT, CONN, NACT, QA, SUPP) AND (assignee in (${allIds}) OR "SDET Assignee" in (${qaIds})) ORDER BY updated DESC`;
 }
 
 function extractComment(commentField) {
@@ -95,9 +89,25 @@ function extractComment(commentField) {
   };
 }
 
+function findSprintArray(fields) {
+  // Sprint customfield ID varies per tenant. Scan all customfields for one
+  // whose value is an array of sprint-shaped objects (have name + state).
+  for (const key of Object.keys(fields)) {
+    if (!key.startsWith('customfield_')) continue;
+    const v = fields[key];
+    if (Array.isArray(v) && v.length > 0 && v[0] && typeof v[0] === 'object'
+        && 'state' in v[0] && 'name' in v[0]) {
+      return v;
+    }
+  }
+  return [];
+}
+
 function mapIssue(raw) {
   const f = raw.fields;
-  const sprint = f.sprint;
+  const sprints = findSprintArray(f);
+  // Prefer the active sprint; otherwise the most recently added (last in array)
+  const sprint = sprints.find(s => s.state === 'active') || sprints[sprints.length - 1] || null;
   const commentInfo = extractComment(f.comment);
 
   return {
@@ -168,7 +178,7 @@ export function clearCache(email) {
 // --- Sprint fetching via Agile API ---
 const SPRINT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-const PROJECT_KEYS = ['ACT', 'CONN', 'NACT', 'QA'];
+const PROJECT_KEYS = ['ACT', 'CONN', 'NACT', 'QA', 'SUPP'];
 
 async function fetchBoardsForProject(projectKey, auth) {
   try {

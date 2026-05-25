@@ -13,7 +13,13 @@
       "Bash(git commit -m ':*)",
       "Bash(git commit:*)",
       "Bash(git:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run *)",
+      "PowerShell(npm run *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3001\")",
+      "PowerShell(Get-Content *)",
+      "PowerShell(New-Item *)"
     ]
   }
 }
