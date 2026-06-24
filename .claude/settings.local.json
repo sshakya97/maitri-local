@@ -19,7 +19,10 @@
       "Bash(netstat -ano)",
       "Bash(findstr \":3001\")",
       "PowerShell(Get-Content *)",
-      "PowerShell(New-Item *)"
+      "PowerShell(New-Item *)",
+      "PowerShell(node server/diag.js)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(Get-ChildItem *)"
     ]
   }
 }

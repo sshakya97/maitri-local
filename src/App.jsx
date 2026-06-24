@@ -21,6 +21,25 @@ const PEOPLE = {
   "Diwas Dhital - Maitri":    { short: "Diwas",   color: "#38BDF8", initials: "DD", role: "QA" },
 };
 
+// Match team members by stable Jira accountId, not display name — Jira display
+// names drift (e.g. "Sashank Shakya - Maitri" → "Sashank Shakya") which silently
+// breaks every PEOPLE[name] lookup. We normalize each issue's assignee/sdetAssignee
+// back to the canonical PEOPLE key by accountId as soon as data arrives.
+const ACCOUNT_TO_NAME = {
+  "712020:9269d5b7-d525-4222-ae71-c4d8b2288bb5": "Anjali Prajapati",
+  "712020:726292d3-c3f8-4ea9-9923-56207f355dfe": "Sanabul Uddin",
+  "712020:c9c43563-935e-4171-b228-fae9c70c1d19": "Sashank Shakya - Maitri",
+  "712020:5f98e841-ff4e-4cf8-b41f-4ab51032ac27": "buddhi.sagar.poudel.ext",
+  "712020:e72a498d-e082-4350-86b5-f0f4d957ce44": "Aarati Adhikari",
+  "712020:2d6a1371-6b2e-459c-a31b-61caff5a7f7d": "Diwas Dhital - Maitri",
+};
+
+function normalizeIdentity(issue) {
+  const assignee = ACCOUNT_TO_NAME[issue.assigneeAccountId] || issue.assignee;
+  const sdetAssignee = ACCOUNT_TO_NAME[issue.sdetAssigneeAccountId] || issue.sdetAssignee;
+  return { ...issue, assignee, sdetAssignee };
+}
+
 const STATUS_CONFIG = {
   "In Progress":          { color: "#4F8EF7", colorLight: "#1D4ED8", bg: "rgba(79,142,247,0.12)",  ring: "#4F8EF7" },
   "Blocked":              { color: "#F74F4F", colorLight: "#B91C1C", bg: "rgba(247,79,79,0.12)",   ring: "#F74F4F" },
@@ -318,9 +337,12 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
   const txt2 = dark ? "#64748B" : "#4A5280";
   const txt3 = dark ? "#334155" : "#94A3B8";
 
+  const [showDone, setShowDone] = useState(false);
+
   const activeIssues = useMemo(() => {
     const now = new Date();
-    let list = issues.filter(i => ACTIVE_CATEGORIES.has(i.statusCategory));
+    // Default: active tasks only. Toggle ON to include completed/promoted/UAT-done.
+    let list = showDone ? [...issues] : issues.filter(i => ACTIVE_CATEGORIES.has(i.statusCategory));
     list = filterBySprint(list, sprintFilter, availableSprints);
     // Date filter — match if either duedate or targetEndDate satisfies
     if (dateFilter === "overdue") {
@@ -338,7 +360,7 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
       list = list.filter(i => { const dates = [i.duedate, i.targetEndDate].filter(Boolean); return dates.some(d => d.slice(0, 10) === dateFilter); });
     }
     return list;
-  }, [issues, sprintFilter, availableSprints, dateFilter]);
+  }, [issues, sprintFilter, availableSprints, dateFilter, showDone]);
 
   const currentSprint = useMemo(() => {
     if (sprintFilter && sprintFilter !== "all" && sprintFilter !== "current" && sprintFilter !== "previous") {
@@ -402,7 +424,7 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 800, color: txt }}>{sprintLabel}</div>
-            <div style={{ fontSize: 12, color: txt2, marginTop: 2 }}>{activeIssues.length} active tasks</div>
+            <div style={{ fontSize: 12, color: txt2, marginTop: 2 }}>{activeIssues.length} {showDone ? "tasks (incl. completed)" : "active tasks"}</div>
           </div>
           <select
             value={sprintFilter}
@@ -436,6 +458,9 @@ function ReportsView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
               <option key={d.date} value={d.date}>{d.date} ({d.count})</option>
             ))}
           </select>
+          <button onClick={() => setShowDone(s => !s)} title="Include completed, promoted, UAT-done and deferred tasks" style={{ padding: "6px 12px", borderRadius: 7, border: `1px solid ${showDone ? "#34D399" : bdr}`, background: showDone ? "rgba(52,211,153,0.12)" : "transparent", color: showDone ? "#34D399" : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
+            {showDone ? "✓ Showing completed" : "Show completed"}
+          </button>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={downloadCSV} style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${bdr}`, background: "transparent", color: txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
@@ -522,10 +547,12 @@ function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
 
   const [highlightedStatus, setHighlightedStatus] = useState(null);
   const [collapsed, setCollapsed] = useState(new Set());
+  const [showDone, setShowDone] = useState(false);
   const personRefs = useRef({});
 
   const standupIssues = useMemo(() => {
-    let list = issues.filter(i => isActive(i) && excludeUAT(i) && excludeDeferred(i));
+    // Default: active work only. Toggle ON to include completed/promoted/UAT/deferred.
+    let list = showDone ? [...issues] : issues.filter(i => isActive(i) && excludeUAT(i) && excludeDeferred(i));
     if (proj !== "All") list = list.filter(i => i.project === proj);
     list = filterBySprint(list, sprintFilter, availableSprints);
 
@@ -545,7 +572,7 @@ function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
       list = list.filter(i => { const dates = [i.duedate, i.targetEndDate].filter(Boolean); return dates.some(d => d.slice(0, 10) === dateFilter); });
     }
     return list;
-  }, [issues, sprintFilter, availableSprints, dateFilter, proj]);
+  }, [issues, sprintFilter, availableSprints, dateFilter, proj, showDone]);
 
   const personGroups = useMemo(() => {
     const priorityOrder = ["P0","P1","P2","P3","P4","Unprioritized"];
@@ -637,7 +664,7 @@ function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800, color: txt }}>Daily Stand-up · {todayStr}</div>
-          <div style={{ fontSize: 12, color: txt2, marginTop: 2 }}>{standupIssues.length} active tasks · {peopleWithWork}/{personGroups.length} people with work</div>
+          <div style={{ fontSize: 12, color: txt2, marginTop: 2 }}>{standupIssues.length} {showDone ? "tasks (incl. completed)" : "active tasks"} · {peopleWithWork}/{personGroups.length} people with work</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, color: txt2, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Project</span>
@@ -664,6 +691,9 @@ function StandupView({ issues, dark, sprintFilter, setSprintFilter, availableSpr
             <option value="no_date">No Date Set</option>
             {availableDueDates.map(d => <option key={d.date} value={d.date}>{d.date} ({d.count})</option>)}
           </select>
+          <button onClick={() => setShowDone(s => !s)} title="Include completed, promoted, UAT-done and deferred tasks" style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${showDone ? "#34D399" : bdr}`, background: showDone ? "rgba(52,211,153,0.12)" : "transparent", color: showDone ? "#34D399" : txt2, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
+            {showDone ? "✓ Showing completed" : "Show completed"}
+          </button>
         </div>
       </div>
 
@@ -913,7 +943,7 @@ export default function App() {
       if (res.status === 401) { handleLogout(); return; }
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
-      setIssues(data);
+      setIssues(data.map(normalizeIdentity));
       setLastFetch(new Date());
     } catch (err) {
       setError(err.message);
@@ -1102,7 +1132,11 @@ export default function App() {
   }, [issues, tab, proj]);
 
   const boardGroups = useMemo(() => {
-    const activeFiltered = filtered.filter(isActive);
+    // Default "Active" view shows only active-category columns (done items live in
+    // the collapsed drawer below). For "All" or a specific status, group whatever
+    // matched — including done-category statuses like INT Done / Dev Done — so they
+    // render as real columns instead of vanishing.
+    const activeFiltered = statusFilter === "Active" ? filtered.filter(isActive) : filtered;
     const statusGroups = {};
     const priorityOrder = ["P0","P1","P2","P3","P4","Unprioritized"];
     for (const issue of activeFiltered) {
@@ -1129,7 +1163,7 @@ export default function App() {
         const order = ["Blocked","In Progress","In Dev","In INT","In Review","Ready for QA","Ready for Promotion","Req Done","Ready for Development","New"];
         return (order.indexOf(a.status) === -1 ? 99 : order.indexOf(a.status)) - (order.indexOf(b.status) === -1 ? 99 : order.indexOf(b.status));
       });
-  }, [filtered, cardOrder]);
+  }, [filtered, cardOrder, statusFilter]);
 
   const handleDragEnd = useCallback((event, status) => {
     const { active, over } = event;
@@ -1397,8 +1431,9 @@ export default function App() {
                 );
               })}
             </div>
-            {/* Non-active section */}
-            {filtered.filter(i => !isActive(i)).length > 0 && (
+            {/* Non-active section — only in the default Active view; when a specific
+                status or All is selected, done items already show as columns above. */}
+            {statusFilter === "Active" && filtered.filter(i => !isActive(i)).length > 0 && (
               <div style={{ background: bg2, border: `1px solid ${bdr}`, borderRadius: 12, overflow: "hidden" }}>
                 <div onClick={() => toggleGroup("__done__")} style={{ padding: "10px 16px", borderBottom: collapsedGroups.has("__done__") ? "none" : `1px solid ${bdr}`, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: txt2 }}>Promoted / Done / Deferred</span>

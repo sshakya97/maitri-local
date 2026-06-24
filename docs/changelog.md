@@ -1,5 +1,22 @@
 /# Maitri Dashboard — Changelog
 
+## [2026-06-19] Fix Missing Team Members + Done-Status Visibility
+
+### What Changed
+- **Sashank, Buddhi & Diwas were invisible across the dashboard — fixed.** The UI matched people by Jira *display name* (the `PEOPLE` object keys), but three display names had drifted in Jira: `Sashank Shakya - Maitri` → `Sashank Shakya`, `Diwas Dhital - Maitri` → `Diwas Dhital`, and `buddhi.sagar.poudel.ext` → `Buddhi Sagar Poudel`. Every `i.assignee === name` / `PEOPLE[i.assignee]` lookup silently failed for them, so they showed 0 active tasks everywhere (standup cards, person filter, stats, QA attribution). Now matched by **stable accountId**: new `ACCOUNT_TO_NAME` map + `normalizeIdentity(issue)` rewrites each issue's `assignee`/`sdetAssignee` to the canonical `PEOPLE` key (via `assigneeAccountId`/`sdetAssigneeAccountId`) at fetch time, so the rest of the app is unchanged and robust against future display-name drift.
+- **Board can now show done-category statuses as columns.** Selecting a specific status (e.g. `INT Done`, `Req Done`, `Dev In INT`, `Promoted`) from the Status dropdown previously rendered an empty board — `boardGroups` hard-filtered `filtered.filter(isActive)`, so done items only ever appeared buried in the collapsed "Promoted / Done / Deferred" drawer. Now `boardGroups` only restricts to active when `statusFilter === "Active"`; for "All" or any specific status it groups all matched issues into real columns. The done drawer now renders only in the default Active view (avoids duplication).
+- **"Show completed" toggle added to Standup and Reports.** Both default to active-only (unchanged behavior), with a green toggle button to include completed/promoted/UAT-done/deferred tasks on demand. Subtitles update to "N tasks (incl. completed)" when on.
+
+### Files Modified
+- `src/App.jsx` — Added `ACCOUNT_TO_NAME` + `normalizeIdentity`; applied via `data.map(normalizeIdentity)` in `fetchIssues`. `boardGroups`: active gate now conditional on `statusFilter` (+ added `statusFilter` to deps); done drawer gated on `statusFilter === "Active"`. Added `showDone` state + toggle button to `StandupView` and `ReportsView`, wired into their issue-filter memos and subtitles.
+- `docs/changelog.md` — This entry.
+
+### Verification
+- Root cause confirmed against live Jira via MCP JQL query: assignee display-name distribution returned `Sashank Shakya` (49), `Diwas Dhital` (26), `Buddhi Sagar Poudel` (25) — none matching the old `PEOPLE` keys; statusCategory split 7 new / 34 indeterminate / 59 done confirmed the done-hiding.
+- Build not run in the editing sandbox (no `node` on PATH) — verify with `npm start`.
+
+---
+
 ## [2026-05-19] Standup Chart Redesign — Card Grid
 
 ### What Changed
