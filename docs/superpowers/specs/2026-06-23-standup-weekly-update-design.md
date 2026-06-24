@@ -18,8 +18,10 @@ the *deliverable*.
 - **Capture source:** voice → transcript. Phase 1 accepts a **pasted/imported transcript**
   (no third-party speech-to-text, no audio leaves the machine). Live in-browser recording is
   **deferred to Phase 2** (needs an STT provider + a MacroHealth privacy sign-off).
-- **Persistence:** **flat files on the backend** (no database). Single user ("just me for
-  now"); team sharing is via export, not multi-user write.
+- **Persistence:** **local SQLite** (`better-sqlite3`), created on first server start at
+  `data/standup.db`. Single user ("just me for now"); team sharing is via export, not
+  multi-user write. (All persistence is isolated behind `server/standupStore.js`, so this
+  remains swappable.)
 - **Jira writes:** none. The dashboard stays **read-only** against Jira. Notes live locally
   and are exported.
 - **Output:** the weekly update in the exact sample format, editable in-app, exported to
@@ -58,7 +60,7 @@ headings (e.g. `…- SummaCare - Cigna` → "Summacare Activation").
 
 ## 3. Architecture
 
-Fits the existing app (React on :5173, Express proxy on :3001, 2-min Jira cache). No DB.
+Fits the existing app (React on :5173, Express proxy on :3001, 2-min Jira cache). Local SQLite DB.
 
 ### Backend (`server/`)
 - **`server/claude.js`** — new. Anthropic client wrapper. `new Anthropic()` reads
@@ -67,11 +69,12 @@ Fits the existing app (React on :5173, Express proxy on :3001, 2-min Jira cache)
     (`output_config.format` json_schema) so the result is reliably shaped. `max_tokens` ~16000.
   - `composeWeeklyUpdate(weekNotes, jiraMeta, template)` → **streamed** (`.stream()` +
     `.finalMessage()`), `max_tokens` ~32000, returns markdown in the sample's section layout.
-- **`server/standupStore.js`** — new. Flat-file read/write under `data/` (add `data/` to
-  `.gitignore`; create the dir on first write):
-  - `data/standups/YYYY-MM-DD.json` — one per captured day.
-  - `data/weekly/YYYY-Www.md` — generated/edited weekly drafts.
-  - `data/initiative-overrides.json` — manual ticket/epic → initiative map.
+- **`server/standupStore.js`** — new. SQLite store; `openDb(path)` creates the schema with
+  `CREATE TABLE IF NOT EXISTS` on first run (add `data/` to `.gitignore`). Tables:
+  - `daily` (date PK, captured_at, raw_transcript, unmatched JSON, no_update JSON) +
+    `daily_note` (date, key, note, summary, assignee, status) — one captured day.
+  - `weekly` (week PK, markdown, updated_at) — generated/edited weekly drafts.
+  - `overrides` (scope, k, v) — manual ticket/epic/prefix → initiative map.
 - **`server/jira.js`** — extend `mapIssue` to expose `epicKey` and `epicName` from the
   issue's `parent` field (the `fields: ['*all']` fetch already returns `parent`). Used for
   grouping. No JQL change.
@@ -95,7 +98,10 @@ Two new tabs in the existing top-bar tab group (`dev / qa / standup / reports / 
 
 ## 4. Data model
 
-`data/standups/2026-06-23.json`:
+SQLite (`data/standup.db`). The store reads/writes the same day-object shape the API uses;
+it's normalized into `daily` + `daily_note` so per-ticket history is queryable.
+
+A captured day (the JSON shape returned by the API, assembled from the two daily tables):
 ```json
 {
   "date": "2026-06-23",
@@ -110,7 +116,7 @@ Two new tabs in the existing top-bar tab group (`dev / qa / standup / reports / 
 }
 ```
 
-`data/initiative-overrides.json`:
+`overrides` table rows assemble into:
 ```json
 { "byEpicKey": { "NACT-5208": "Sharp – Valenz Activation" },
   "byTicketKey": { "ACT-1023": "AmeriHealth" },

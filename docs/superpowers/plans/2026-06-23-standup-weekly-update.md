@@ -6,7 +6,7 @@
 
 **Architecture:** Express backend (`:3001`) gains pure helper modules (initiative grouping, week aggregation), a flat-file store (no DB), and a thin Anthropic wrapper; new routes serve daily capture and weekly generation. The React single-file app (`:5173`) gains two tabs (Capture, Weekly). Jira stays read-only. Spec: `docs/superpowers/specs/2026-06-23-standup-weekly-update-design.md`.
 
-**Tech Stack:** Node 18+ (ESM), Express 5, React 19, `@anthropic-ai/sdk` (model `claude-opus-4-8`), `docx` (Word export), `node --test` (backend unit tests).
+**Tech Stack:** Node 18+ (ESM), Express 5, React 19, `@anthropic-ai/sdk` (model `claude-opus-4-8`), `better-sqlite3` (local DB), `docx` (Word export), `node --test` (backend unit tests).
 
 ---
 
@@ -14,7 +14,7 @@
 
 - `server/initiatives.js` — pure: resolve a ticket's initiative (epic → summary-prefix → override → fallback). + `server/initiatives.test.js`
 - `server/weekly.js` — pure: ISO week math + week aggregation grouped by initiative / QA. + `server/weekly.test.js`
-- `server/standupStore.js` — flat-file read/write under a base dir. + `server/standupStore.test.js`
+- `server/standupStore.js` — SQLite store; `openDb(path)` creates the schema on first run. + `server/standupStore.test.js`
 - `server/claude.js` — pure prompt/schema builders + thin Anthropic calls. + `server/claude.test.js`
 - `server/jira.js` — MODIFY `mapIssue` to expose `epicKey`/`epicName`; export it for testing. + `server/jira.test.js`
 - `server/index.js` — MODIFY: add standup routes.
@@ -22,7 +22,7 @@
 - `package.json` — MODIFY: deps + `test` script.
 - `.gitignore` — MODIFY: ignore `data/`.
 - `.env` — MODIFY (manual): add `ANTHROPIC_API_KEY`.
-- `data/` — created at runtime (git-ignored): `standups/*.json`, `weekly/*.md`, `initiative-overrides.json`.
+- `data/standup.db` — SQLite database, created on first server start (git-ignored). Tables: `daily`, `daily_note`, `weekly`, `overrides`.
 
 ---
 
@@ -37,9 +37,9 @@
 
 Run:
 ```bash
-npm install @anthropic-ai/sdk docx
+npm install @anthropic-ai/sdk docx better-sqlite3
 ```
-Expected: both added under `dependencies` in `package.json`; no errors.
+Expected: all three added under `dependencies` in `package.json`; no errors. `better-sqlite3` ships prebuilt binaries for common Node versions on Windows — if install tries to compile and fails, ensure Node is an even LTS (18/20/22) so a prebuild matches.
 
 - [ ] **Step 2: Add the test script**
 
@@ -84,7 +84,7 @@ Expected: exits 0 with "tests 0" (no test files yet) — confirms `node --test` 
 
 ```bash
 git add package.json package-lock.json .gitignore
-git commit -m "chore(standup): add anthropic-sdk + docx deps and node test runner"
+git commit -m "chore(standup): add anthropic-sdk, docx, better-sqlite3 deps and node test runner"
 ```
 
 ---
@@ -382,9 +382,12 @@ git commit -m "feat(standup): ISO week math and per-initiative week aggregation"
 
 ---
 
-## Task 5: Flat-file store
+## Task 5: SQLite store (schema created on first run)
 
-Read/write daily JSON, weekly markdown, and the overrides map under a base dir.
+Persist daily captures, weekly drafts, and overrides in a local SQLite file.
+`openDb(path)` opens the file and runs `CREATE TABLE IF NOT EXISTS` — that is the
+"first run" setup. All CRUD goes through this module so the rest of the app stays
+storage-agnostic. `better-sqlite3` is **synchronous** (no `await` needed).
 
 **Files:**
 - Create: `server/standupStore.js`
@@ -392,47 +395,70 @@ Read/write daily JSON, weekly markdown, and the overrides map under a base dir.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `server/standupStore.test.js`:
+Create `server/standupStore.test.js` (tests use an in-memory db — no temp files):
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { saveDaily, readDaily, listDaily, saveWeekly, readWeekly, readOverrides } from './standupStore.js';
+import { openDb, saveDaily, readDaily, listDaily, saveWeekly, readWeekly, readOverrides } from './standupStore.js';
 
-test('daily save/read/list round-trips', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'maitri-'));
-  try {
-    await saveDaily(dir, { date: '2026-06-23', perTicket: [{ key: 'NACT-1', note: 'x' }] });
-    const back = await readDaily(dir, '2026-06-23');
-    assert.equal(back.perTicket[0].key, 'NACT-1');
-    const list = await listDaily(dir, {});
-    assert.equal(list.length, 1);
-    assert.equal(list[0].date, '2026-06-23');
-  } finally { await rm(dir, { recursive: true, force: true }); }
+const freshDb = () => openDb(':memory:');
+
+test('openDb creates schema so reads work on an empty db', () => {
+  const db = freshDb();
+  assert.equal(readDaily(db, '2099-01-01'), null);
+  assert.deepEqual(listDaily(db, {}), []);
+  assert.deepEqual(readOverrides(db), { byTicketKey: {}, byEpicKey: {}, bySummaryPrefix: {} });
 });
 
-test('weekly save/read round-trips', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'maitri-'));
-  try {
-    await saveWeekly(dir, '2026-W26', '# Weekly\nhello');
-    assert.match(await readWeekly(dir, '2026-W26'), /hello/);
-  } finally { await rm(dir, { recursive: true, force: true }); }
+test('daily save/read/list round-trips with per-ticket notes', () => {
+  const db = freshDb();
+  saveDaily(db, { date: '2026-06-23', capturedAt: 't', rawTranscript: 'x',
+    perTicket: [{ key: 'NACT-1', note: 'did a thing', summary: 'S', assignee: 'A', status: 'In Progress' }],
+    unmatched: ['huh'], noUpdate: ['NACT-9'] });
+  const back = readDaily(db, '2026-06-23');
+  assert.equal(back.perTicket.length, 1);
+  assert.equal(back.perTicket[0].key, 'NACT-1');
+  assert.equal(back.perTicket[0].assignee, 'A');
+  assert.deepEqual(back.unmatched, ['huh']);
+  assert.deepEqual(back.noUpdate, ['NACT-9']);
+  assert.deepEqual(listDaily(db, {}), [{ date: '2026-06-23' }]);
 });
 
-test('readOverrides returns empty shape when missing', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'maitri-'));
-  try {
-    assert.deepEqual(await readOverrides(dir), { byTicketKey: {}, byEpicKey: {}, bySummaryPrefix: {} });
-  } finally { await rm(dir, { recursive: true, force: true }); }
+test('saveDaily replaces prior notes for the same date (idempotent re-save)', () => {
+  const db = freshDb();
+  saveDaily(db, { date: '2026-06-23', perTicket: [{ key: 'A', note: '1' }], unmatched: [], noUpdate: [] });
+  saveDaily(db, { date: '2026-06-23', perTicket: [{ key: 'B', note: '2' }], unmatched: [], noUpdate: [] });
+  const back = readDaily(db, '2026-06-23');
+  assert.equal(back.perTicket.length, 1);
+  assert.equal(back.perTicket[0].key, 'B');
 });
 
-test('readDaily returns null for a missing date', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'maitri-'));
-  try {
-    assert.equal(await readDaily(dir, '2099-01-01'), null);
-  } finally { await rm(dir, { recursive: true, force: true }); }
+test('listDaily honors from/to bounds', () => {
+  const db = freshDb();
+  for (const d of ['2026-06-22', '2026-06-23', '2026-06-24']) {
+    saveDaily(db, { date: d, perTicket: [], unmatched: [], noUpdate: [] });
+  }
+  assert.deepEqual(listDaily(db, { from: '2026-06-23', to: '2026-06-23' }), [{ date: '2026-06-23' }]);
+});
+
+test('weekly save/read round-trips', () => {
+  const db = freshDb();
+  saveWeekly(db, '2026-W26', '# Weekly\nhello');
+  assert.match(readWeekly(db, '2026-W26'), /hello/);
+  assert.equal(readWeekly(db, '2099-W01'), null);
+});
+
+test('readOverrides assembles the three scopes', () => {
+  const db = freshDb();
+  const ins = db.prepare('INSERT INTO overrides(scope,k,v) VALUES (?,?,?)');
+  ins.run('ticket', 'ACT-1023', 'AmeriHealth');
+  ins.run('epic', 'NACT-5208', 'Sharp – Valenz Activation');
+  ins.run('prefix', '(Euro Center)', 'Euro Center');
+  assert.deepEqual(readOverrides(db), {
+    byTicketKey: { 'ACT-1023': 'AmeriHealth' },
+    byEpicKey: { 'NACT-5208': 'Sharp – Valenz Activation' },
+    bySummaryPrefix: { '(Euro Center)': 'Euro Center' },
+  });
 });
 ```
 
@@ -444,80 +470,133 @@ Expected: FAIL — cannot find module `./standupStore.js`.
 - [ ] **Step 3: Implement `server/standupStore.js`**
 
 ```js
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import Database from 'better-sqlite3';
 
-async function ensureDir(dir) {
-  await mkdir(dir, { recursive: true });
+// Open (creating if needed) the SQLite db and ensure the schema exists.
+// Pass ':memory:' for an ephemeral db (tests); pass a file path for persistence.
+// Calling this on first server start is what "sets up the DB on first run".
+export function openDb(path) {
+  const db = new Database(path);
+  db.pragma('journal_mode = WAL');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS daily (
+      date TEXT PRIMARY KEY,
+      captured_at TEXT,
+      raw_transcript TEXT,
+      unmatched TEXT NOT NULL DEFAULT '[]',
+      no_update TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE IF NOT EXISTS daily_note (
+      date TEXT NOT NULL,
+      key TEXT NOT NULL,
+      note TEXT,
+      summary TEXT,
+      assignee TEXT,
+      status TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_daily_note_date ON daily_note(date);
+    CREATE INDEX IF NOT EXISTS idx_daily_note_key ON daily_note(key);
+    CREATE TABLE IF NOT EXISTS weekly (
+      week TEXT PRIMARY KEY,
+      markdown TEXT NOT NULL,
+      updated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS overrides (
+      scope TEXT NOT NULL,
+      k TEXT NOT NULL,
+      v TEXT NOT NULL,
+      PRIMARY KEY (scope, k)
+    );
+  `);
+  return db;
 }
 
-export async function saveDaily(baseDir, day) {
-  const dir = join(baseDir, 'standups');
-  await ensureDir(dir);
-  await writeFile(join(dir, `${day.date}.json`), JSON.stringify(day, null, 2), 'utf8');
+export function saveDaily(db, day) {
+  const tx = db.transaction((d) => {
+    db.prepare(`INSERT INTO daily(date, captured_at, raw_transcript, unmatched, no_update)
+                VALUES (@date, @capturedAt, @rawTranscript, @unmatched, @noUpdate)
+                ON CONFLICT(date) DO UPDATE SET
+                  captured_at=excluded.captured_at,
+                  raw_transcript=excluded.raw_transcript,
+                  unmatched=excluded.unmatched,
+                  no_update=excluded.no_update`).run({
+      date: d.date,
+      capturedAt: d.capturedAt || new Date().toISOString(),
+      rawTranscript: d.rawTranscript || '',
+      unmatched: JSON.stringify(d.unmatched || []),
+      noUpdate: JSON.stringify(d.noUpdate || []),
+    });
+    db.prepare(`DELETE FROM daily_note WHERE date = ?`).run(d.date);
+    const ins = db.prepare(`INSERT INTO daily_note(date, key, note, summary, assignee, status)
+                            VALUES (?, ?, ?, ?, ?, ?)`);
+    for (const pt of d.perTicket || []) {
+      ins.run(d.date, pt.key, pt.note || '', pt.summary || '', pt.assignee || '', pt.status || '');
+    }
+  });
+  tx(day);
   return day;
 }
 
-export async function readDaily(baseDir, date) {
-  try {
-    const text = await readFile(join(baseDir, 'standups', `${date}.json`), 'utf8');
-    return JSON.parse(text);
-  } catch (err) {
-    if (err.code === 'ENOENT') return null;
-    throw err;
-  }
+export function readDaily(db, date) {
+  const row = db.prepare(`SELECT * FROM daily WHERE date = ?`).get(date);
+  if (!row) return null;
+  const perTicket = db.prepare(
+    `SELECT key, note, summary, assignee, status FROM daily_note WHERE date = ?`
+  ).all(date);
+  return {
+    date: row.date,
+    capturedAt: row.captured_at,
+    rawTranscript: row.raw_transcript,
+    perTicket,
+    unmatched: JSON.parse(row.unmatched),
+    noUpdate: JSON.parse(row.no_update),
+  };
 }
 
-export async function listDaily(baseDir, { from, to } = {}) {
-  const dir = join(baseDir, 'standups');
-  let names;
-  try { names = await readdir(dir); } catch (err) { if (err.code === 'ENOENT') return []; throw err; }
-  return names
-    .filter(n => n.endsWith('.json'))
-    .map(n => n.slice(0, -5))
-    .filter(date => (!from || date >= from) && (!to || date <= to))
-    .sort()
-    .map(date => ({ date }));
+export function listDaily(db, { from, to } = {}) {
+  const clauses = [];
+  const params = [];
+  if (from) { clauses.push('date >= ?'); params.push(from); }
+  if (to) { clauses.push('date <= ?'); params.push(to); }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  return db.prepare(`SELECT date FROM daily ${where} ORDER BY date`)
+    .all(...params)
+    .map(r => ({ date: r.date }));
 }
 
-export async function saveWeekly(baseDir, week, markdown) {
-  const dir = join(baseDir, 'weekly');
-  await ensureDir(dir);
-  await writeFile(join(dir, `${week}.md`), markdown, 'utf8');
+export function saveWeekly(db, week, markdown) {
+  db.prepare(`INSERT INTO weekly(week, markdown, updated_at) VALUES (?, ?, ?)
+              ON CONFLICT(week) DO UPDATE SET markdown=excluded.markdown, updated_at=excluded.updated_at`)
+    .run(week, markdown, new Date().toISOString());
   return week;
 }
 
-export async function readWeekly(baseDir, week) {
-  try {
-    return await readFile(join(baseDir, 'weekly', `${week}.md`), 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') return null;
-    throw err;
-  }
+export function readWeekly(db, week) {
+  const row = db.prepare(`SELECT markdown FROM weekly WHERE week = ?`).get(week);
+  return row ? row.markdown : null;
 }
 
-export async function readOverrides(baseDir) {
-  const empty = { byTicketKey: {}, byEpicKey: {}, bySummaryPrefix: {} };
-  try {
-    const text = await readFile(join(baseDir, 'initiative-overrides.json'), 'utf8');
-    return { ...empty, ...JSON.parse(text) };
-  } catch (err) {
-    if (err.code === 'ENOENT') return empty;
-    throw err;
+export function readOverrides(db) {
+  const out = { byTicketKey: {}, byEpicKey: {}, bySummaryPrefix: {} };
+  const bucketFor = { ticket: 'byTicketKey', epic: 'byEpicKey', prefix: 'bySummaryPrefix' };
+  for (const row of db.prepare(`SELECT scope, k, v FROM overrides`).all()) {
+    const bucket = bucketFor[row.scope];
+    if (bucket) out[bucket][row.k] = row.v;
   }
+  return out;
 }
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test server/standupStore.test.js`
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add server/standupStore.js server/standupStore.test.js
-git commit -m "feat(standup): flat-file store for daily/weekly/overrides"
+git commit -m "feat(standup): SQLite store with schema created on first run"
 ```
 
 ---
@@ -723,12 +802,18 @@ At the top of `server/index.js`, extend the jira import and add the new modules:
 import { fetchAllIssues, clearCache, fetchAllSprints, verifyCredentials } from './jira.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { mkdirSync } from 'node:fs';
 import { extractDailyNotes, composeWeeklyUpdate } from './claude.js';
-import { saveDaily, readDaily, listDaily, saveWeekly, readWeekly, readOverrides } from './standupStore.js';
+import { openDb, saveDaily, readDaily, listDaily, saveWeekly, readWeekly, readOverrides } from './standupStore.js';
 import { aggregateWeek, weekdayDates, isoWeekKey } from './weekly.js';
 
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const QA_NAMES = ['Aarati Adhikari', 'Diwas Dhital - Maitri'];
+
+// First-run setup: ensure the data dir exists, then open the SQLite db
+// (creates the file + schema if absent). Synchronous; opened once at startup.
+mkdirSync(DATA_DIR, { recursive: true });
+const db = openDb(join(DATA_DIR, 'standup.db'));
 ```
 
 - [ ] **Step 2: Add the routes (before `app.listen`)**
@@ -747,7 +832,7 @@ app.post('/api/standup/daily', extractAuth, async (req, res) => {
 
     // Save raw transcript first so nothing is lost if extraction fails.
     const base = { date, capturedAt: new Date().toISOString(), rawTranscript: transcript, perTicket: [], unmatched: [], noUpdate: [] };
-    await saveDaily(DATA_DIR, base);
+    saveDaily(db, base);
 
     const extracted = await extractDailyNotes(transcript, activeTickets);
     const issuesByKey = Object.fromEntries(issues.map(i => [i.key, i]));
@@ -756,7 +841,7 @@ app.post('/api/standup/daily', extractAuth, async (req, res) => {
       return { key: pt.key, note: pt.note, summary: m.summary || '', assignee: m.assignee || '', status: m.status || '' };
     });
     const day = { ...base, perTicket, unmatched: extracted.unmatched || [], noUpdate: extracted.noUpdate || [] };
-    await saveDaily(DATA_DIR, day);
+    saveDaily(db, day);
     res.json(day);
   } catch (err) {
     if (err.code === 'NO_API_KEY') return res.status(500).json({ error: err.message });
@@ -766,13 +851,13 @@ app.post('/api/standup/daily', extractAuth, async (req, res) => {
 });
 
 app.get('/api/standup/daily/:date', extractAuth, async (req, res) => {
-  const day = await readDaily(DATA_DIR, req.params.date);
+  const day = readDaily(db, req.params.date);
   if (!day) return res.status(404).json({ error: 'no capture for that date' });
   res.json(day);
 });
 
 app.get('/api/standup/history', extractAuth, async (req, res) => {
-  res.json(await listDaily(DATA_DIR, { from: req.query.from, to: req.query.to }));
+  res.json(listDaily(db, { from: req.query.from, to: req.query.to }));
 });
 
 app.post('/api/standup/weekly', extractAuth, async (req, res) => {
@@ -780,14 +865,14 @@ app.post('/api/standup/weekly', extractAuth, async (req, res) => {
   if (!weekStart) return res.status(400).json({ error: 'weekStart (a yyyy-mm-dd in the week) is required' });
   try {
     const dates = weekdayDates(weekStart);
-    const dailies = (await Promise.all(dates.map(d => readDaily(DATA_DIR, d)))).filter(Boolean);
+    const dailies = dates.map(d => readDaily(db, d)).filter(Boolean);
     const issues = await fetchAllIssues(req.auth, req.jiraEmail);
     const issuesByKey = Object.fromEntries(issues.map(i => [i.key, i]));
-    const overrides = await readOverrides(DATA_DIR);
+    const overrides = readOverrides(db);
     const aggregate = aggregateWeek(dailies, issuesByKey, overrides, QA_NAMES);
     const markdown = await composeWeeklyUpdate(aggregate, boilerplate || {});
     const week = isoWeekKey(weekStart);
-    await saveWeekly(DATA_DIR, week, markdown);
+    saveWeekly(db, week, markdown);
     res.json({ week, markdown });
   } catch (err) {
     if (err.code === 'NO_API_KEY') return res.status(500).json({ error: err.message });
@@ -797,7 +882,7 @@ app.post('/api/standup/weekly', extractAuth, async (req, res) => {
 });
 
 app.get('/api/standup/weekly/:week', extractAuth, async (req, res) => {
-  const markdown = await readWeekly(DATA_DIR, req.params.week);
+  const markdown = readWeekly(db, req.params.week);
   if (markdown == null) return res.status(404).json({ error: 'no weekly draft' });
   res.json({ week: req.params.week, markdown });
 });
@@ -805,7 +890,7 @@ app.get('/api/standup/weekly/:week', extractAuth, async (req, res) => {
 app.put('/api/standup/weekly/:week', extractAuth, async (req, res) => {
   const { markdown } = req.body || {};
   if (typeof markdown !== 'string') return res.status(400).json({ error: 'markdown string required' });
-  await saveWeekly(DATA_DIR, req.params.week, markdown);
+  saveWeekly(db, req.params.week, markdown);
   res.json({ week: req.params.week, markdown });
 });
 ```
@@ -820,7 +905,7 @@ app.use(express.json({ limit: '2mb' }));
 - [ ] **Step 4: Smoke-test the server boots**
 
 Run: `npm run server`
-Expected: logs `Maitri API server running on http://localhost:3001` with no import errors. Stop it with Ctrl-C.
+Expected: logs `Maitri API server running on http://localhost:3001` with no import errors, and `data/standup.db` is created on disk (the first-run DB setup). Stop it with Ctrl-C.
 
 - [ ] **Step 5: Commit**
 
@@ -942,7 +1027,7 @@ and immediately after the `if (!date || !transcript) ...` guard, add:
   if (override && Array.isArray(override.perTicket)) {
     const day = { date, capturedAt: new Date().toISOString(), rawTranscript: transcript,
       perTicket: override.perTicket, unmatched: override.unmatched || [], noUpdate: override.noUpdate || [] };
-    await saveDaily(DATA_DIR, day);
+    saveDaily(db, day);
     return res.json(day);
   }
 ```
@@ -969,7 +1054,7 @@ Also exclude `capture` and `weekly` from the stat-cards / people-cards / board s
 - [ ] **Step 4: Manual verification**
 
 Run: `npm start`. Log in. Click **Capture**. Paste a short transcript mentioning a couple of real active ticket keys, set the date, click **Extract notes**.
-Expected: per-ticket notes appear with editable text; unmatched/noUpdate lists render; **Save edits** returns without error. Confirm `data/standups/<date>.json` was written.
+Expected: per-ticket notes appear with editable text; unmatched/noUpdate lists render; **Save edits** returns without error. Confirm the day persisted (re-opening Capture for that date via `GET /api/standup/daily/<date>` returns it; `data/standup.db` exists and grows).
 
 - [ ] **Step 5: Commit**
 
@@ -1109,7 +1194,7 @@ Add next to the Capture render block:
 - [ ] **Step 4: Manual verification**
 
 Run: `npm start`. Capture at least one day this week (Task 8). Click **Weekly**, pick a date in that week, click **Generate**.
-Expected: a markdown document appears in the editor with the sample's section headings, grouped by initiative, including a QA/SDET Coverage section. Edit a line, **Save draft** (writes `data/weekly/<week>.md`). **⬇ Word (.docx)** downloads a file that opens in Word; **⬇ Markdown** downloads the `.md`.
+Expected: a markdown document appears in the editor with the sample's section headings, grouped by initiative, including a QA/SDET Coverage section. Edit a line, **Save draft** (persists to the `weekly` table in `data/standup.db`). **⬇ Word (.docx)** downloads a file that opens in Word; **⬇ Markdown** downloads the `.md`.
 
 - [ ] **Step 5: Commit**
 
@@ -1149,9 +1234,9 @@ Prepend under the title in `docs/changelog.md`:
 ## [2026-06-23] Standup Capture → Weekly Update
 
 ### What Changed
-- **New Capture tab** — paste a daily stand-up transcript; Claude (`claude-opus-4-8`, structured outputs) maps it to per-ticket progress notes against the active Jira tickets, flags mentioned-but-unmatched items and tickets with no update. Notes are editable and saved to `data/standups/<date>.json`.
-- **New Weekly tab** — aggregates a week's daily notes, groups by client/initiative (derived from each ticket's parent Epic, with summary-prefix and manual overrides), and Claude composes the team's weekly update in the established section format. Editable; saved to `data/weekly/<week>.md`; exports to `.docx` and markdown.
-- **Backend** — new `server/initiatives.js`, `server/weekly.js`, `server/standupStore.js`, `server/claude.js`; `mapIssue` now exposes `epicKey`/`epicName`; new `/api/standup/*` routes. No database — flat files under `data/` (git-ignored). Jira stays read-only.
+- **New Capture tab** — paste a daily stand-up transcript; Claude (`claude-opus-4-8`, structured outputs) maps it to per-ticket progress notes against the active Jira tickets, flags mentioned-but-unmatched items and tickets with no update. Notes are editable and saved to a local SQLite db.
+- **New Weekly tab** — aggregates a week's daily notes, groups by client/initiative (derived from each ticket's parent Epic, with summary-prefix and manual overrides), and Claude composes the team's weekly update in the established section format. Editable; persisted to the db; exports to `.docx` and markdown.
+- **Backend** — new `server/initiatives.js`, `server/weekly.js`, `server/standupStore.js`, `server/claude.js`; `mapIssue` now exposes `epicKey`/`epicName`; new `/api/standup/*` routes. Local **SQLite** database (`better-sqlite3`) created on first server start at `data/standup.db` (git-ignored). Jira stays read-only.
 
 ### Files Modified
 - `server/jira.js`, `server/index.js`, `src/App.jsx`, `package.json`, `.gitignore`
